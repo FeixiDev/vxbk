@@ -10,7 +10,7 @@ from datetime import datetime
 import webhook_transfer as w
 
 #LOG_PATH = f'{os.getcwd()}/'
-LOG_PATH = '/backup/'
+LOG_PATH = '/mnt/'
 CLI_LOG_NAME = 'blkbackup.log'
 AUDIT_2_WEBHOOK = True
 #AUDIT_2_WEBHOOK = False
@@ -140,4 +140,5 @@ class Log(object):
             #if result:
             #    logger = Log()
             #    logger.write_to_log("ERR", f"Tried to rewrite the data 10 times, but the data write failed!", False)
+
 

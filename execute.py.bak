@@ -104,27 +104,6 @@ def snapshotrestore(resource, snapshot, restorres):
         return False
     return True
 
-def imagerestore(image, restorres, sp):
-    cmd = f"ls -l --block-size=K {image} | awk '''{{print $5}}'''"
-    res_size = execute_cmd(cmd, 0).strip()
-    cmd = f"linstor resource-definition create {restorres}"
-    res = execute_cmd(cmd, 0)
-    if "ERROR" in res:
-        return False
-    cmd = f"linstor volume-definition create {restorres} {res_size}"
-    res = execute_cmd(cmd, 0)
-    if "ERROR" in res:
-        return False
-    cmd = f"kubectl get pod -o wide | grep '^backup-' | awk '''{{print $7}}'''"
-    node = execute_cmd(cmd, 0).strip()
-    if not node:
-        return False
-    cmd = f"linstor resource create {node} {restorres} --storage-pool {sp}"
-    res = execute_cmd(cmd, 0)
-    if "ERROR" in res:
-        return False
-    return True
-
 def createlv(image, restorlv, vg):
     cmd = f"ls -lh {image} | awk '''{{print $5}}'''"
     lv_size = execute_cmd(cmd, 0).strip()
@@ -134,13 +113,6 @@ def createlv(image, restorlv, vg):
         return True
     else:
         return False
-
-def finddrbddevice(resource):
-    cmd = f"linstor r lv | grep {resource} | awk '''{{print $12}}'''"
-    device = execute_cmd(cmd, 0).strip()
-    if not device:
-        return False
-    return device
 
 def formatdevice(device):
     cmd = f"mkfs.ext4 {device}"
@@ -356,7 +328,7 @@ def restore_block(resource, snapshot):
             print("Failed")
     else:
         logger.write_to_log("ERR", f"校验和不匹配, 快照设备'{snapshot}'可能被损坏", True)
-        print("Failed")
+        print(f"Failed")
 
 def restore_file(resource, snapshot):
     res = checkchecksum(resource, snapshot)
@@ -390,137 +362,13 @@ def restore_file(resource, snapshot):
     else:
         logger.write_to_log("ERR", f"校验和不匹配, 快照设备'{snapshot}'可能被损坏", True)
 
-# def image_restore_block(resource, image, vg):
-#     cmd = f"vgs | grep {vg}"
-#     res = execute_cmd(cmd, 0)
-#     if not res:
-#         logger.write_to_log("ERR", f"卷组'{vg}'不存在", True)
-#         print("Failed")
-#         return
-#     logger.write_to_log("INFO", f"比较映像文件'{image}'的校验和和数据库记录的校验和", True)
-#     backup_record = db.selectdb("name", resource, "image", image)
-#     if not backup_record:
-#         logger.write_to_log("ERR", f"资源'{resource}'或者映像文件'{image}'不存在", True)
-#         print("Failed")
-#         return
-#     image_record = getchecksum(image)
-#     backup_sp = backup_record["snapshot"]
-#     if backup_record["checksum"] == image_record:
-#         logger.write_to_log("INFO", f"映像文件'{image}'的校验和和数据库记录的校验和一致", True)
-#         logger.write_to_log("INFO", f"开始对资源'{resource}'进行恢复", True)
-#         restorlv = f"{backup_sp}_r"
-#         res = createlv(image, restorlv, vg)
-#         if not res:
-#             logger.write_to_log("ERR", f"'{restorlv}'创建失败，映像文件恢复失败", True)
-#             print("Failed")
-#             return
-#         logger.write_to_log("INFO", f"'{restorlv}'创建成功", True)
-#         time.sleep(5)
-#         device = findlvdevice(restorlv)
-#         if not device:
-#             logger.write_to_log("ERR", f"找不到'{restorlv}'对应设备，映像文件恢复失败", True)
-#             print("Failed")
-#             return
-#         logger.write_to_log("INFO", f"找到'{restorlv}'对应设备为：{device}", True)
-#         res = ddcmd(image, device)
-#         if res:
-#             logger.write_to_log("INFO", f"资源恢复成功，恢复后的资源名为：{restorlv}", True) 
-#             db.updatedb("imageRestore", restorlv, backup_sp)
-#             print("Success")
-#         else:
-#             logger.write_to_log("ERR", f"将映像文件'{image}'导入到'{restorlv}'失败", True)
-#             print("Failed")
-#     else:
-#         logger.write_to_log("ERR", f"校验和不匹配, 映像文件'{image}'可能被损坏", True)
-#         print("Failed")
-
-
-# def image_restore_file(resource, image, vg):
-#     cmd = f"vgs | grep {vg}"
-#     res = execute_cmd(cmd, 0)
-#     if not res:
-#         logger.write_to_log("ERR", f"卷组'{vg}'不存在", True)
-#         print("Failed")
-#         return
-#     logger.write_to_log("INFO", f"比较映像文件'{image}'的校验和和数据库记录的校验和", True)
-#     backup_record = db.selectdb("name", resource, "image", image)
-#     if not backup_record:
-#         logger.write_to_log("ERR", f"资源'{resource}'或者映像文件'{image}'不存在", True)
-#         print("Failed")
-#         return
-#     image_record = getchecksum(image)
-#     backup_sp = backup_record["snapshot"]
-#     if backup_record["checksum"] == image_record:
-#         logger.write_to_log("INFO", f"映像文件'{image}'的校验和和数据库记录的校验和一致", True)
-#         logger.write_to_log("INFO", f"开始对资源'{resource}'进行恢复", True)
-#         restorlv = f"{backup_sp}_r"
-#         res = createlv(image, restorlv, vg)
-#         if not res:
-#             logger.write_to_log("ERR", f"'{restorlv}'创建失败，映像文件恢复失败", True)
-#             print("Failed")
-#             return
-#         logger.write_to_log("INFO", f"'{restorlv}'创建成功", True)
-#         time.sleep(5)
-#         device = findlvdevice(restorlv)
-#         if not device:
-#             logger.write_to_log("ERR", f"找不到'{restorlv}'对应设备，映像文件'{image}'恢复失败", True)
-#             print("Failed")
-#             return
-#         logger.write_to_log("INFO", f"找到'{restorlv}'对应设备'{device}'", True)
-#         res = formatdevice(device)
-#         if not res:
-#             logger.write_to_log("ERR", f"格式化设备'{device}'失败", True)
-#             logger.write_to_log("ERR", f"资源'{resource}'恢复失败", True)
-#             print("Failed")
-#             return
-#         res = ddcmd(image, device)
-#         if res:
-#             logger.write_to_log("INFO", f"资源恢复成功，恢复后的资源名为：{restorlv}", True) 
-#             db.updatedb("imageRestore", restorlv, backup_sp)
-#             cmd = f"mkdir /mnt/{backup_sp}"
-#             res = execute_cmd(cmd, 0)
-#             if res:
-#                 logger.write_to_log("ERR", f"创建挂载目录'/mnt/{backup_sp}'失败", True)
-#                 print("Failed")
-#                 return
-#             logger.write_to_log("INFO", f"创建挂载目录'/mnt/{backup_sp}'成功", True)
-#             cmd = f"mount {device} /mnt/{backup_sp}"
-#             res = execute_cmd(cmd, 0)
-#             if "wrong" in res:
-#                 print(f"挂载{device}失败")
-#                 logger.write_to_log("ERR", f"还原后的设备'{device}'挂载到目录'/mnt/{backup_sp}'失败", True)
-#                 return
-#             logger.write_to_log("INFO", f"还原后的设备'{device}'挂载到目录'/mnt/{backup_sp}'成功", True)
-#             print("Success")
-#         else:
-#             logger.write_to_log("ERR", f"将映像文件'{image}'导入到'{restorlv}'失败", True)
-#             print("Failed")
-#     else:
-#         logger.write_to_log("ERR", f"校验和不匹配, 映像文件'{image}'可能被损坏", True)
-#         print("Failed")
-    
-def snapshot_judge(resource, snapshot):
-    cmd = f"linstor r lv | grep {resource} | head -n 1 | awk '''{{print $12}}'''"
-    sd = execute_cmd(cmd, 0).strip()
-    cmd = f"file -s {sd}"
-    res = execute_cmd(cmd, 0).strip()
-    if "filesystem" in res:
-        restore_file(resource, snapshot)
-    else:
-        restore_block(resource, snapshot)
-
-# def image_judge(resource, image, vg):
-#     cmd = f"linstor r lv | grep {resource} | head -n 1 | awk '''{{print $12}}'''"
-#     sd = execute_cmd(cmd, 0).strip()
-#     cmd = f"file -s {sd}"
-#     res = execute_cmd(cmd, 0).strip()
-#     if "filesystem" in res:
-#         image_restore_file(resource, image, vg)
-#     else:
-#         image_restore_block(resource, image, vg)
-
-
-def image_judge(resource, image, sp):
+def image_restore_block(resource, image, vg):
+    cmd = f"vgs | grep {vg}"
+    res = execute_cmd(cmd, 0)
+    if not res:
+        logger.write_to_log("ERR", f"卷组'{vg}'不存在", True)
+        print("Failed")
+        return
     logger.write_to_log("INFO", f"比较映像文件'{image}'的校验和和数据库记录的校验和", True)
     backup_record = db.selectdb("name", resource, "image", image)
     if not backup_record:
@@ -532,47 +380,221 @@ def image_judge(resource, image, sp):
     if backup_record["checksum"] == image_record:
         logger.write_to_log("INFO", f"映像文件'{image}'的校验和和数据库记录的校验和一致", True)
         logger.write_to_log("INFO", f"开始对资源'{resource}'进行恢复", True)
-        restorres = f"{backup_sp}_r"
-        res = imagerestore(image, restorres, sp)
+        restorlv = f"{backup_sp}_r"
+        res = createlv(image, restorlv, vg)
         if not res:
-            logger.write_to_log("ERR", f"'{restorres}'创建失败，映像文件恢复失败", True)
+            logger.write_to_log("ERR", f"'{restorlv}'创建失败，映像文件恢复失败", True)
             print("Failed")
             return
-        logger.write_to_log("INFO", f"'{restorres}'创建成功", True)
+        logger.write_to_log("INFO", f"'{restorlv}'创建成功", True)
         time.sleep(5)
-        device = finddrbddevice(restorres)
+        device = findlvdevice(restorlv)
         if not device:
-            logger.write_to_log("ERR", f"找不到'{restorres}'对应设备，映像文件恢复失败", True)
+            logger.write_to_log("ERR", f"找不到'{restorlv}'对应设备，映像文件恢复失败", True)
             print("Failed")
             return
-        logger.write_to_log("INFO", f"找到'{restorres}'对应设备为：{device}", True)
+        logger.write_to_log("INFO", f"找到'{restorlv}'对应设备为：{device}", True)
         res = ddcmd(image, device)
         if res:
-            logger.write_to_log("INFO", f"资源恢复成功，恢复后的资源名为：{restorres}", True) 
-            db.updatedb("imageRestore", restorres, backup_sp)
-            cmd = f"file -s {device}"
-            res = execute_cmd(cmd, 0).strip()
-            if "filesystem" in res:
-                cmd = f"mkdir /mnt/{backup_sp}"
-                res = execute_cmd(cmd, 0)
-                if res:
-                    logger.write_to_log("ERR", f"创建挂载目录'/mnt/{backup_sp}'失败", True)
-                    print("Failed")
-                    return
-                logger.write_to_log("INFO", f"创建挂载目录'/mnt/{backup_sp}'成功", True)
-                cmd = f"mount {device} /mnt/{backup_sp}"
-                res = execute_cmd(cmd, 0)
-                if "wrong" in res:
-                    print(f"挂载{device}失败")
-                    logger.write_to_log("ERR", f"还原后的设备'{device}'挂载到目录'/mnt/{backup_sp}'失败", True)
-                    print("Failed")
-                    return
-                logger.write_to_log("INFO", f"还原后的设备'{device}'挂载到目录'/mnt/{backup_sp}'成功", True)
+            logger.write_to_log("INFO", f"资源恢复成功，恢复后的资源名为：{restorlv}", True) 
+            db.updatedb("imageRestore", restorlv, backup_sp)
             print("Success")
         else:
-            logger.write_to_log("ERR", f"将映像文件'{image}'导入到'{restorres}'失败", True)
+            logger.write_to_log("ERR", f"将映像文件'{image}'导入到'{restorlv}'失败", True)
             print("Failed")
     else:
         logger.write_to_log("ERR", f"校验和不匹配, 映像文件'{image}'可能被损坏", True)
         print("Failed")
+
+
+def image_restore_file(resource, image, vg):
+    cmd = f"vgs | grep {vg}"
+    res = execute_cmd(cmd, 0)
+    if not res:
+        logger.write_to_log("ERR", f"卷组'{vg}'不存在", True)
+        print("Failed")
+        return
+    logger.write_to_log("INFO", f"比较映像文件'{image}'的校验和和数据库记录的校验和", True)
+    backup_record = db.selectdb("name", resource, "image", image)
+    if not backup_record:
+        logger.write_to_log("ERR", f"资源'{resource}'或者映像文件'{image}'不存在", True)
+        print("Failed")
+        return
+    image_record = getchecksum(image)
+    backup_sp = backup_record["snapshot"]
+    if backup_record["checksum"] == image_record:
+        logger.write_to_log("INFO", f"映像文件'{image}'的校验和和数据库记录的校验和一致", True)
+        logger.write_to_log("INFO", f"开始对资源'{resource}'进行恢复", True)
+        restorlv = f"{backup_sp}_r"
+        res = createlv(image, restorlv, vg)
+        if not res:
+            logger.write_to_log("ERR", f"'{restorlv}'创建失败，映像文件恢复失败", True)
+            print("Failed")
+            return
+        logger.write_to_log("INFO", f"'{restorlv}'创建成功", True)
+        time.sleep(5)
+        device = findlvdevice(restorlv)
+        if not device:
+            logger.write_to_log("ERR", f"找不到'{restorlv}'对应设备，映像文件'{image}'恢复失败", True)
+            print("Failed")
+            return
+        logger.write_to_log("INFO", f"找到'{restorlv}'对应设备'{device}'", True)
+        res = formatdevice(device)
+        if not res:
+            logger.write_to_log("ERR", f"格式化设备'{device}'失败", True)
+            logger.write_to_log("ERR", f"资源'{resource}'恢复失败", True)
+            print("Failed")
+            return
+        res = ddcmd(image, device)
+        if res:
+            logger.write_to_log("INFO", f"资源恢复成功，恢复后的资源名为：{restorlv}", True) 
+            db.updatedb("imageRestore", restorlv, backup_sp)
+            cmd = f"mkdir /mnt/{backup_sp}"
+            res = execute_cmd(cmd, 0)
+            if res:
+                logger.write_to_log("ERR", f"创建挂载目录'/mnt/{backup_sp}'失败", True)
+                print("Failed")
+                return
+            logger.write_to_log("INFO", f"创建挂载目录'/mnt/{backup_sp}'成功", True)
+            cmd = f"mount {device} /mnt/{backup_sp}"
+            res = execute_cmd(cmd, 0)
+            if "wrong" in res:
+                print(f"挂载{device}失败")
+                logger.write_to_log("ERR", f"还原后的设备'{device}'挂载到目录'/mnt/{backup_sp}'失败", True)
+                return
+            logger.write_to_log("INFO", f"还原后的设备'{device}'挂载到目录'/mnt/{backup_sp}'成功", True)
+            print("Success")
+        else:
+            logger.write_to_log("ERR", f"将映像文件'{image}'导入到'{restorlv}'失败", True)
+            print("Failed")
+    else:
+        logger.write_to_log("ERR", f"校验和不匹配, 映像文件'{image}'可能被损坏", True)
+        print("Failed")
+    
+def snapshot_judge(resource, snapshot):
+    cmd = f"linstor r lv | grep {resource} | head -n 1 | awk '''{{print $12}}'''"
+    sd = execute_cmd(cmd, 0).strip()
+    cmd = f"file -s {sd}"
+    res = execute_cmd(cmd, 0).strip()
+    if "filesystem" in res:
+        restore_file(resource, snapshot)
+    else:
+        restore_block(resource, snapshot)
+
+def image_judge(resource, image, vg):
+    cmd = f"linstor r lv | grep {resource} | head -n 1 | awk '''{{print $12}}'''"
+    sd = execute_cmd(cmd, 0).strip()
+    cmd = f"file -s {sd}"
+    res = execute_cmd(cmd, 0).strip()
+    if "filesystem" in res:
+        image_restore_file(resource, image, vg)
+    else:
+        image_restore_block(resource, image, vg)
+
+def snapshotrollback(resource, snapshot):
+    cmd = f"linstor snapshot rollback {resource} {snapshot}"
+    res = execute_cmd(cmd, 0)
+    if "ERROR" in res:
+        return False
+    return True
+
+def rollback_block(resource):
+    data = db.finddb("name", resource)
+    snapshot = data[len(data) - 1]['snapshot']
+    res = checkchecksum(resource, snapshot)
+    if res:
+        res = snapshotrollback(resource, snapshot)
+        if res:
+            logger.write_to_log("INFO", f"成功使用快照'{snapshot}'回滚资源", True)
+            print("Success")
+        else:
+            logger.write_to_log("ERR", f"使用快照'{snapshot}'回滚资源失败", True)
+            print("Failed")
+    else:
+        logger.write_to_log("ERR", f"校验和不匹配, 快照设备'{snapshot}'可能被损坏", True)
+        print(f"Failed")
+
+def rollback_file(resource):
+    data = db.finddb("name", resource)
+    snapshot = data[len(data) - 1]['snapshot']
+    res = checkchecksum(resource, snapshot)
+    if res:
+        res = snapshotrollback(resource, snapshot)
+        if res:
+            logger.write_to_log("INFO", f"成功使用快照'{snapshot}'回滚资源", True)
+            cmd = f"mkdir /mnt/{snapshot}_rb"
+            res = execute_cmd(cmd, 0)
+            if res:
+                logger.write_to_log("ERR", f"创建挂载目录'/mnt/{snapshot}_rb'失败", True)
+                print("Failed")
+                return
+            logger.write_to_log("INFO", f"创建挂载目录'/mnt/{snapshot}_rb'成功", True)
+            cmd = f"linstor r lv | grep {resource} | head -n 1 | awk '''{{print $12}}'''"
+            sd = execute_cmd(cmd, 0).strip()
+            cmd = f"mount {sd} /mnt/{snapshot}_rb"
+            res = execute_cmd(cmd, 0)
+            if "wrong" in res:
+                logger.write_to_log("ERR", f"还原后的设备'{sd}'挂载到目录'/mnt/{snapshot}_rb'失败", True)
+                print("Failed")
+            else:
+                logger.write_to_log("INFO", f"还原后的设备'{sd}'挂载成功, 挂载目录为'/mnt/{snapshot}_rb'", True)
+                print("Success")
+        else:
+            logger.write_to_log("ERR", f"回滚资源'{resource}'失败", True)
+            print("Failed")
+    else:
+        logger.write_to_log("ERR", f"校验和不匹配, 快照设备'{snapshot}'可能被损坏", True)
+
+def rollback_judge(resource):
+    cmd = f"linstor r lv | grep {resource} | head -n 1 | awk '''{{print $12}}'''"
+    sd = execute_cmd(cmd, 0).strip()
+    cmd = f"file -s {sd}"
+    res = execute_cmd(cmd, 0).strip()
+    if "filesystem" in res:
+        rollback_file(resource)
+    else:
+        rollback_block(resource)
+
+'''
+###测试代码
+db.truncatedb()
+print("******************************insert********************************")
+#[{'name': 'res_a', 'snapshot': 'resa320230313132918', 'snapshotRestore': 'resa320230313132918_r', 'image': 'resa320230313132918.img', 'imageRestore': '/dev/vg/lv01', 'time': '2023-03-13 13:29:18'}, {'name': 'res_b', 'snapshot': 'resa320230313133527', 'snapshotRestore': 'resa320230313133527_r', 'image': 'resa320230313133527.img', 'imageRestore': '/dev/vg/lv02', 'time': '2023-03-13 13:35:27'}]
+create_snap("thres")
+dump_snap("thres")
+create_snap("thres")
+dump_snap("thres")
+create_snap("thres")
+dump_snap("thres")
+create_snap("thres")
+dump_snap("thres")
+create_snap("thres")
+create_snap("thres")
+create_snap("thres2")
+dump_snap("thres2", "./")
+restore_block("thres", "thres20230319104807")
+restore_file("thres2", "thres220230319112552")
+image_restore_block("thres", "/mnt/thres20230319104807.img", "vg0")
+
+create_snap("thres")
+dump_snap("thres")
+show_snap("", "")
+restore_block("thres", "thres20230319151125")
+image_restore_block("thres", "/mnt/thres20230319151125.img", "vg0")
+show_snap("", "")
+create_snap("thres2")
+dump_snap("thres2", "./")
+show_snap("", "")
+restore_file("thres2", "thres220230319151803")
+image_restore_file("thres2", "/home/fxtadmin/backup_gui/thres220230319151803.img", "vg0")
+show_snap("", "")
+'''
+
+
+
+
+
+
+
+
 

@@ -6,6 +6,8 @@ import time
 import urllib3
 
 url='https://kube-auditing-webhook-svc.kubesphere-logging-system.svc:6443/audit/webhook/event'
+#url = 'https://10.203.1.11:30635/audit/webhook/event'
+#url = 'https://10.203.1.210:30399/audit/webhook/event'
 
 def wh_interface(Time,Workspace,Reason,AuditResType,ResName,SourceIPs,LogLevel):
     #print('webhokk info from bmcprogram',Time,Workspace,Reason,AuditResType,ResName,SourceIPs,LogLevel)
@@ -226,4 +228,5 @@ def wh_interface_many(events_list):
         time.sleep(2)
     if err_signal:
       print('Tried to rewrite the data 10 times, but the data write failed!')
+
 
